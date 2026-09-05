@@ -120,6 +120,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: エージェント定義を取得
+        # プラグインは開発者の手元にしか入らない。CIランナーには存在しないため、
+        # テンプレートを取得してエージェント定義を直接読ませる。
+        # これによりローカル(プラグイン)とCIが同じ定義を使う。
+        uses: actions/checkout@v4
+        with:
+          repository: kosei-k/ai-dev-template
+          path: .ai-dev-template
+          ref: main
+
       - name: plan-reviewer(非ゲート)
         uses: anthropics/claude-code-action@v1
         with:
@@ -127,7 +137,8 @@ jobs:
           # fixerのpush(github-actions[bot]名義)がこのワークフローを再トリガーするため許可する
           allowed_bots: "github-actions[bot]"
           prompt: |
-            plan-reviewer エージェントの役割を **あなた自身がこのセッション内で直接**
+            まず .ai-dev-template/plugins/ai-dev/agents/plan-reviewer.md を読み、
+            そこに書かれた役割を **あなた自身がこのセッション内で直接**
             実行してください。Agent/Taskツールでの委譲は絶対にしないでください
             (このセッションにはサブエージェントを呼び出す権限がありません。
             委譲すると何も実行されずに終了します)。
@@ -151,13 +162,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: エージェント定義を取得
+        # プラグインは開発者の手元にしか入らない。CIランナーには存在しないため、
+        # テンプレートを取得してエージェント定義を直接読ませる。
+        # これによりローカル(プラグイン)とCIが同じ定義を使う。
+        uses: actions/checkout@v4
+        with:
+          repository: kosei-k/ai-dev-template
+          path: .ai-dev-template
+          ref: main
+
       - name: reviewer
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           allowed_bots: "github-actions[bot]"
           prompt: |
-            reviewer エージェントの役割を **あなた自身がこのセッション内で直接**
+            まず .ai-dev-template/plugins/ai-dev/agents/reviewer.md を読み、
+            そこに書かれた役割を **あなた自身がこのセッション内で直接**
             実行してください。Agent/Taskツールでの委譲は絶対にしないでください
             (このセッションにはサブエージェントを呼び出す権限がありません。
             委譲すると何も実行されずに終了します)。
@@ -218,6 +240,13 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.ref }}
 
+      - name: エージェント定義を取得
+        uses: actions/checkout@v4
+        with:
+          repository: kosei-k/ai-dev-template
+          path: .ai-dev-template
+          ref: main
+
       - name: セットアップ
         if: inputs.setup_action != ''
         uses: jdx/mise-action@v2
@@ -228,7 +257,8 @@ jobs:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           allowed_bots: "github-actions[bot]"
           prompt: |
-            fixer エージェントの役割を **あなた自身がこのセッション内で直接**
+            まず .ai-dev-template/plugins/ai-dev/agents/fixer.md を読み、
+            そこに書かれた役割を **あなた自身がこのセッション内で直接**
             実行してください。Agent/Taskツールでの委譲は絶対にしないでください
             (このセッションにはサブエージェントを呼び出す権限がありません。委譲すると、
             委譲先が何も実行しないまま終了しても親セッションはそれに気づかず
