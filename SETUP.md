@@ -4,9 +4,16 @@
 
 ## 前提
 
-- GitHub リポジトリがある
-- `CLAUDE_CODE_OAUTH_TOKEN` をリポジトリの Secrets に登録できる
-  （Settings → Secrets and variables → Actions）
+次の3つが揃っていないと、AIレビューは動かない。**3つとも別物**なので、
+1つでも欠けると起動時か実行時に失敗する。
+
+| # | 必要なもの | 場所 | 欠けたときの症状 |
+|---|---|---|---|
+| 1 | **Claude Code の GitHub App** | https://github.com/apps/claude から**対象リポジトリに**インストール | `Claude Code is not installed on this repository` で失敗 |
+| 2 | **`CLAUDE_CODE_OAUTH_TOKEN`** | リポジトリの Settings → Secrets and variables → Actions | 認証エラー |
+| 3 | **呼び出し側の `permissions` 宣言** | 各ワークフローファイル（手順3を参照） | `startup_failure`。ジョブが起動すらしない |
+
+1と2は別物である。**1はリポジトリへのアクセス許可、2は認証情報**で、両方要る。
 
 ## 1. プラグインを入れる
 
