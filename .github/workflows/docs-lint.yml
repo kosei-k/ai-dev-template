@@ -1,0 +1,41 @@
+name: Docs Lint (reusable)
+
+# ドキュメントの機械検査。「機械検査できる規約はチェックリストではなくlintに落とす」の実体。
+# スクリプトは各リポジトリにコピーせず、ここから取得して実行する。
+#
+# 使い方(呼び出し側):
+#
+#   jobs:
+#     docs-lint:
+#       uses: kosei-k/ai-dev-template/.github/workflows/docs-lint.yml@main
+#
+# ローカルでも同じ検査を走らせたい場合は、リポジトリのタスクランナーから
+# 直接このスクリプトを実行する(SETUP.md 参照)。
+
+on:
+  workflow_call:
+    inputs:
+      python_version:
+        type: string
+        default: '3.13'
+
+jobs:
+  docs-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 呼び出し側リポジトリを取得
+        uses: actions/checkout@v4
+
+      - name: テンプレートのスクリプトを取得
+        uses: actions/checkout@v4
+        with:
+          repository: kosei-k/ai-dev-template
+          path: .ai-dev-template
+          ref: main
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: docs_lint.py
+        run: python .ai-dev-template/scripts/docs_lint.py

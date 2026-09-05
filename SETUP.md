@@ -1,0 +1,167 @@
+# 導入手順
+
+新しいリポジトリでAI主導開発の土台を使えるようにする。所要15分程度。
+
+## 前提
+
+- GitHub リポジトリがある
+- `CLAUDE_CODE_OAUTH_TOKEN` をリポジトリの Secrets に登録できる
+  （Settings → Secrets and variables → Actions）
+
+## 1. プラグインを入れる
+
+Claude Code で:
+
+```
+/plugin marketplace add kosei-k/ai-dev-template
+/plugin install ai-dev
+```
+
+これで次が使えるようになる。**リポジトリにファイルは増えない。**
+
+| 種類 | 中身 |
+|---|---|
+| エージェント | `reviewer` / `fixer` / `plan-reviewer` |
+| コマンド | `/plan` / `/pr` |
+| フック | 聖域ガード（`PreToolUse`）・保存時lint（`PostToolUse`） |
+
+更新はテンプレート側を直して `/plugin update`。全リポジトリに同じものが届く。
+
+## 2. 固有設定を書く
+
+`project.toml.example` を `.claude/project.toml` としてコピーし、自分のリポジトリに合わせる。
+
+```bash
+curl -o .claude/project.toml \
+  https://raw.githubusercontent.com/kosei-k/ai-dev-template/main/project.toml.example
+```
+
+**最低限、次の2つは必ず設定する。**
+
+- `[project] check_command` — 人間・AI・CIが共通で叩く検証コマンド
+- `[[sanctuary.rule]]` — AIが単独で変更してはいけない領域
+
+**`[[sanctuary.rule]]` の `path` が実在しないと、docs_lint がエラーで落ちる。**
+「設定し忘れてガードが空振りしているのに気づかない」ことを防ぐための仕様。
+聖域が無いプロジェクトなら、`[[sanctuary.rule]]` ごと書かなければよい。
+
+## 3. ワークフローを3ファイル置く
+
+いずれも中身は数行で、ロジックはテンプレート側にある。
+
+`.github/workflows/ai-review.yml`:
+
+```yaml
+name: AI Review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, unlabeled]
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  ai-review:
+    uses: kosei-k/ai-dev-template/.github/workflows/ai-review.yml@main
+    with:
+      check_command: mise run check
+      sanctuary_paths: 'config/config\.toml|src/rules\.py'
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+```
+
+`sanctuary_paths` は `.claude/project.toml` の聖域と同じものを正規表現で書く
+（GitHub Actions からはTOMLを読めないため、ここだけ二重に書く必要がある）。
+
+`.github/workflows/guard.yml`:
+
+```yaml
+name: Guard
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  guard:
+    uses: kosei-k/ai-dev-template/.github/workflows/guard.yml@main
+    with:
+      tests_glob: 'tests/*.py'
+      impl_glob: 'src/*.py'
+```
+
+`.github/workflows/docs-lint.yml`（受け入れケース台帳を使う場合）:
+
+```yaml
+name: Docs Lint
+on: [pull_request]
+jobs:
+  docs-lint:
+    uses: kosei-k/ai-dev-template/.github/workflows/docs-lint.yml@main
+```
+
+## 4. ローカルでも同じ検査を走らせる
+
+CIとローカルで違うコマンドを叩くと、AIが「どちらで確かめるか」で間違える。
+タスクランナーに1本だけ入口を作り、そこから呼ぶ。
+
+```toml
+# mise.toml
+[tasks.docs-lint]
+run = "python3 <(curl -sL https://raw.githubusercontent.com/kosei-k/ai-dev-template/main/scripts/docs_lint.py)"
+
+[tasks.check]
+depends = ["lint", "test", "docs-lint"]
+```
+
+ネットワークに依存させたくない場合は、`scripts/docs_lint.py` をvendorしてもよい
+（その場合はテンプレート側の更新が自動では届かなくなる）。
+
+## 5. `CLAUDE.md` を書く
+
+**ここだけは毎回ゼロから書く。** プロジェクトの正典であり、流用するものではない。
+
+エージェントが読むので、最低限これらを書いておく。
+
+- このプロジェクトで**何が最悪の欠陥か**（`reviewer` の Critical の基準になる）
+- アーキテクチャと、ロジックの置き場所のルール
+- **AIを止める境界** — 何をAIに変更させないか、なぜか
+- 落とし穴（実際に踏んだもの）
+
+## 6. 判断基準のドキュメントを置く
+
+`reviewer` は自分の感覚で品質を判断せず、これらを読む。
+`docs/` にある雛形をコピーして、プロジェクトに合わせて書き換える。
+
+| ファイル | 中身 |
+|---|---|
+| `.claude/04_quality/01_review_checklist.md` | 項目IDを振ったレビュー観点。**機械検査済みの項目には印を付ける**（CIが見るものをAIに指摘させない） |
+| `.claude/04_quality/02_severity.md` | Critical / Major / Minor の定義と**このプロジェクトでの具体例** |
+| `.claude/00_project/03_plan_template.md` | 計画テンプレート。`plan-reviewer` が抜けを検出する基準になる |
+| `.claude/05_acceptance/01_scope.md` | 受け入れケース台帳（使う場合） |
+
+## 7. 動作確認
+
+**わざと欠陥を含むPRを1本作って、止まることを確認する。** 止める仕組みが動くことを
+確認しないまま自動修正ループを本番のPRに向けるのは危険。
+
+- `reviewer` が Critical/Major を出し、`fixer` が直してPRにpushするか
+- 聖域に該当する指摘のとき、`fixer` が起動せず `needs-human` が付くか
+- テストに `skip` を足したPRで `guard` が BLOCK するか
+- 聖域パスを実在しないものに書き換えたとき、`docs_lint` が落ちるか
+
+## 導入後のディレクトリ
+
+```
+your-repo/
+  .claude/
+    project.toml              ← 固有設定（唯一の必須ファイル）
+    04_quality/               ← 判断基準（reviewer が読む）
+    05_acceptance/            ← 受け入れケース台帳（任意）
+    00_project/               ← プロセス文書（任意）
+  .github/workflows/
+    ai-review.yml             ← 数行
+    guard.yml                 ← 数行
+    docs-lint.yml             ← 数行
+  CLAUDE.md                   ← 毎回ゼロから書く
+```
+
+エージェント本体・フック・スクリプトは**リポジトリに存在しない**。
+プラグインと reusable workflow から供給される。

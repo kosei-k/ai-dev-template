@@ -1,0 +1,96 @@
+name: Guard (reusable)
+
+# テスト弱体化の機械検知。fixer の暴走防止。
+#
+# 検出:
+#   1. 受け入れケースID付きテストの削除          -> BLOCK (light/strict とも)
+#   2. skip/xfail マーカーの追加                  -> BLOCK (light/strict とも)
+#   3. 実装削除を伴わないテスト関数の削除          -> ESCALATE (strict のみ)
+#   4. assert の純減                              -> ESCALATE (strict のみ)
+#
+# [ai-fix] コミットを含むPRは strict、それ以外は light。
+#
+# 使い方(呼び出し側 .github/workflows/guard.yml):
+#
+#   name: Guard
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened]
+#   jobs:
+#     guard:
+#       uses: kosei-k/ai-dev-template/.github/workflows/guard.yml@main
+#       with:
+#         tests_glob: 'tests/*.py'
+#         impl_glob: 'src/*.py'
+
+on:
+  workflow_call:
+    inputs:
+      tests_glob:
+        description: 'テストのパス(git pathspec)'
+        type: string
+        default: 'tests/*.py'
+      impl_glob:
+        description: '実装のパス(git pathspec)。テスト削除が実装削除と対応しているかの判定に使う'
+        type: string
+        default: 'src/*'
+
+jobs:
+  check-test-weakening:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: 呼び出し側リポジトリを取得
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: テンプレートのスクリプトを取得
+        uses: actions/checkout@v4
+        with:
+          repository: kosei-k/ai-dev-template
+          path: .ai-dev-template
+          ref: main
+
+      - name: モード判定([ai-fix]コミットが含まれるか)
+        id: mode
+        run: |
+          COMMITS="$(git log --format=%s origin/${{ github.base_ref }}..HEAD)"
+          if echo "$COMMITS" | grep -q '^\[ai-fix\]'; then
+            echo "mode=strict" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=light" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: check_test_weakening.sh
+        id: check
+        run: |
+          set +e
+          bash .ai-dev-template/scripts/check_test_weakening.sh \
+            "origin/${{ github.base_ref }}" "HEAD" "${{ steps.mode.outputs.mode }}" \
+            "${{ inputs.tests_glob }}" "${{ inputs.impl_glob }}"
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit 0   # 後続ステップで分岐するため、ここでは失敗させない
+
+      - name: BLOCK ならCIを落とす
+        if: steps.check.outputs.exit_code == '1'
+        run: |
+          echo "::error::テストが弱体化されている疑いがあるためブロックします"
+          exit 1
+
+      - name: ESCALATE なら needs-human ラベルを付与
+        if: steps.check.outputs.exit_code == '2'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.warning("人間の確認が必要な変更が検出されました(needs-human)");
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ["needs-human"],
+            });

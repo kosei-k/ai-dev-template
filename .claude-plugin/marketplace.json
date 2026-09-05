@@ -1,0 +1,25 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ai-dev-template",
+  "description": "AI主導開発の土台。reviewer→fixerの自動レビューループと、AIを止める仕組みをセットで配る",
+  "owner": {
+    "name": "kosei-k"
+  },
+  "plugins": [
+    {
+      "name": "ai-dev",
+      "description": "PRの自動レビュー(reviewer)・自動修正(fixer)・計画レビュー(plan-reviewer)と、聖域ガード・保存時lintのフック。判断基準はリポジトリ側の .claude/04_quality/ と .claude/project.toml から読む",
+      "author": {
+        "name": "kosei-k"
+      },
+      "category": "development",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/kosei-k/ai-dev-template.git",
+        "path": "plugins/ai-dev",
+        "ref": "main"
+      },
+      "homepage": "https://github.com/kosei-k/ai-dev-template"
+    }
+  ]
+}

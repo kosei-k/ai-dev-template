@@ -1,0 +1,275 @@
+name: AI Review (reusable)
+
+# reviewer -> ゲート判定 -> fixer -> (pushで呼び出し側を再トリガーし再レビュー)。
+# Plan PR (feature/plan-* ブランチ) は plan-reviewer のみ動かす。非ゲート。
+#
+# 無限ループ防止:
+#   - 呼び出し側の concurrency で同一PRの古いランを破棄する
+#   - [ai-fix] コミットが fix_attempt_limit に達したら fixer を起動せず needs-human
+#   - needs-human ラベル付きPRはスキップ
+#   - VERDICT が抽出できなければ fail-closed でCIを落とす
+#
+# 使い方(呼び出し側 .github/workflows/ai-review.yml):
+#
+#   name: AI Review
+#   on:
+#     pull_request:
+#       types: [opened, synchronize, reopened, ready_for_review, unlabeled]
+#   concurrency:
+#     group: ai-review-${{ github.event.pull_request.number }}
+#     cancel-in-progress: true
+#   jobs:
+#     ai-review:
+#       uses: kosei-k/ai-dev-template/.github/workflows/ai-review.yml@main
+#       with:
+#         check_command: mise run check
+#         sanctuary_paths: 'config/config\.toml|src/rules\.py'
+#       secrets:
+#         claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+on:
+  workflow_call:
+    inputs:
+      check_command:
+        description: 'fixerが修正後に必ず通す検証コマンド'
+        type: string
+        default: 'mise run check'
+      sanctuary_paths:
+        description: '聖域パスの正規表現(| 区切り)。ここへの指摘は fixer を起動せず人間に回す'
+        type: string
+        default: ''
+      fix_attempt_limit:
+        description: '[ai-fix] コミットの上限。到達したら needs-human'
+        type: number
+        default: 3
+      skip_docs_only:
+        description: 'ドキュメントのみのPRでAIレビューをスキップする(Plan PRは除外)'
+        type: boolean
+        default: true
+      plan_branch_prefix:
+        description: 'Plan PR と判定するブランチ名の接頭辞'
+        type: string
+        default: 'feature/plan-'
+      setup_action:
+        description: 'fixer実行前に走らせるセットアップAction(例 jdx/mise-action@v2)'
+        type: string
+        default: 'jdx/mise-action@v2'
+      fixer_allowed_tools:
+        description: 'fixerに許可するツール'
+        type: string
+        default: 'Read,Edit,Grep,Glob,Bash(git add *),Bash(git commit *),Bash(git status *),Bash(git diff *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh pr comment *),Bash(mise run *),Bash(uv run *)'
+    secrets:
+      claude_code_oauth_token:
+        required: true
+
+jobs:
+  gate:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+      is_plan: ${{ steps.decide.outputs.is_plan }}
+      fix_attempts: ${{ steps.decide.outputs.fix_attempts }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: decide
+        run: |
+          IS_PLAN=false
+          if [[ "${{ github.head_ref }}" == ${{ inputs.plan_branch_prefix }}* ]]; then
+            IS_PLAN=true
+          fi
+          echo "is_plan=$IS_PLAN" >> "$GITHUB_OUTPUT"
+
+          SKIP=false
+          if echo '${{ toJson(github.event.pull_request.labels.*.name) }}' | grep -q 'needs-human'; then
+            SKIP=true
+          fi
+
+          # ドキュメントのみのPRはスキップ(コスト最適化)。
+          # ただしPlan PRは除外する。Plan PRは定義上ドキュメントしか変更しないため、
+          # この最適化に無条件で飲み込まれてしまう。
+          if [[ "$IS_PLAN" == "false" && "${{ inputs.skip_docs_only }}" == "true" ]]; then
+            CHANGED="$(git diff --name-only origin/${{ github.base_ref }}...HEAD)"
+            if [[ -n "$CHANGED" ]] && ! echo "$CHANGED" | grep -qvE '\.(md)$|^\.claude/'; then
+              SKIP=true
+            fi
+          fi
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+
+          FIX_ATTEMPTS="$(git log --format=%s origin/${{ github.base_ref }}..HEAD | grep -c '^\[ai-fix\]' || true)"
+          echo "fix_attempts=$FIX_ATTEMPTS" >> "$GITHUB_OUTPUT"
+
+  plan-review:
+    needs: gate
+    if: needs.gate.outputs.skip == 'false' && needs.gate.outputs.is_plan == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: plan-reviewer(非ゲート)
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          # fixerのpush(github-actions[bot]名義)がこのワークフローを再トリガーするため許可する
+          allowed_bots: "github-actions[bot]"
+          prompt: |
+            plan-reviewer エージェントの役割を **あなた自身がこのセッション内で直接**
+            実行してください。Agent/Taskツールでの委譲は絶対にしないでください
+            (このセッションにはサブエージェントを呼び出す権限がありません。
+            委譲すると何も実行されずに終了します)。
+            このPRの計画をレビューし、<!-- ai-plan-review --> マーカー付きの
+            PRコメントとして結果を投稿してください。
+          claude_args: |
+            --allowedTools "Read,Grep,Glob,Bash(git diff *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh pr comment *)" --model haiku
+
+  review:
+    needs: gate
+    if: needs.gate.outputs.skip == 'false' && needs.gate.outputs.is_plan == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+    outputs:
+      verdict: ${{ steps.extract.outputs.verdict }}
+      sanctuary_only: ${{ steps.extract.outputs.sanctuary_only }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: reviewer
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          allowed_bots: "github-actions[bot]"
+          prompt: |
+            reviewer エージェントの役割を **あなた自身がこのセッション内で直接**
+            実行してください。Agent/Taskツールでの委譲は絶対にしないでください
+            (このセッションにはサブエージェントを呼び出す権限がありません。
+            委譲すると何も実行されずに終了します)。
+            まず .claude/project.toml と CLAUDE.md を読んで判断基準を把握し、
+            このPRの差分をレビューして、<!-- ai-review --> マーカー付きの
+            PRコメントとして結果を投稿してください
+            (既存のマーカー付きコメントがあれば更新する)。
+          claude_args: |
+            --allowedTools "Read,Grep,Glob,Bash(git diff *),Bash(git log *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh pr comment *)"
+
+      - name: VERDICTを抽出
+        id: extract
+        run: |
+          COMMENT="$(gh pr view ${{ github.event.pull_request.number }} --json comments \
+            --jq '[.comments[] | select(.body | contains("ai-review"))][-1].body // ""')"
+          VERDICT="$(echo "$COMMENT" | grep -oE 'VERDICT: [A-Z]+' | head -1 | awk '{print $2}')"
+          if [[ -z "$VERDICT" ]]; then
+            echo "verdict=UNKNOWN" >> "$GITHUB_OUTPUT"
+          else
+            echo "verdict=$VERDICT" >> "$GITHUB_OUTPUT"
+          fi
+
+          # 聖域への指摘かどうかの判定。reviewer の出力形式「- 対象: `path:line`」から
+          # ファイルパスだけを抜き出して判定する(本文中の言及・引用と、実際の修正対象を
+          # 区別するため)。
+          SANCTUARY=false
+          if [[ -n "${{ inputs.sanctuary_paths }}" ]]; then
+            TARGETS="$(echo "$COMMENT" | grep -oE '対象: `[^`]+`' | grep -oE '`[^`]+`' | tr -d '`')"
+            if echo "$TARGETS" | grep -qE "^(${{ inputs.sanctuary_paths }})(:|$)"; then
+              SANCTUARY=true
+            fi
+          fi
+          echo "sanctuary_only=$SANCTUARY" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: VERDICT不明ならfail-closed
+        if: steps.extract.outputs.verdict == 'UNKNOWN'
+        run: |
+          echo "::error::reviewerのVERDICTを抽出できませんでした。fail-closedでCIを落とします"
+          exit 1
+
+  fixer:
+    needs: [gate, review]
+    if: >
+      needs.gate.outputs.skip == 'false' &&
+      needs.review.outputs.verdict == 'FAIL' &&
+      needs.review.outputs.sanctuary_only == 'false' &&
+      fromJson(needs.gate.outputs.fix_attempts) < fromJson(inputs.fix_attempt_limit)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: セットアップ
+        if: inputs.setup_action != ''
+        uses: jdx/mise-action@v2
+
+      - name: fixer
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
+          allowed_bots: "github-actions[bot]"
+          prompt: |
+            fixer エージェントの役割を **あなた自身がこのセッション内で直接**
+            実行してください。Agent/Taskツールでの委譲は絶対にしないでください
+            (このセッションにはサブエージェントを呼び出す権限がありません。委譲すると、
+            委譲先が何も実行しないまま終了しても親セッションはそれに気づかず
+            「成功」を報告してしまいます)。
+            まず .claude/project.toml の [sanctuary] と CLAUDE.md を読み、
+            直前の reviewer レポートの Critical/Major 指摘のうち聖域に該当しないものを
+            最小修正してください。修正後に `${{ inputs.check_command }}` が通ることを
+            確認してから [ai-fix] プレフィックス付きコミットとして
+            **ローカルに commit するところまで**行ってください。
+            **push は不要です。push は別ステップが自動で行います。**
+            結果は <!-- ai-fix --> マーカー付きのPRコメントとして投稿してください。
+          claude_args: |
+            --allowedTools "${{ inputs.fixer_allowed_tools }}"
+
+      - name: '[ai-fix]コミットをpush(claudeのtool権限を経由しない生のgit操作)'
+        # git push は差分が無ければ "Everything up-to-date" で正常終了するだけなので、
+        # fixerが何も直さなかった場合でも無条件に実行してよい。
+        #
+        # anthropics/claude-code-action は内部でGitHub App由来の短命installation
+        # tokenを使ってgit認証を再設定するため、直前のcheckoutが設定した認証情報が
+        # 上書きされる。job権限(contents: write)を持つ GITHUB_TOKEN で remote URL を
+        # 明示的に再設定してからpushすることで、確実に認証させる。
+        run: |
+          git remote set-url origin "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push origin HEAD:${{ github.head_ref }}
+
+  needs-human:
+    needs: [gate, review]
+    if: >
+      always() &&
+      needs.gate.outputs.skip == 'false' &&
+      needs.review.result == 'success' &&
+      (needs.review.outputs.verdict == 'FAIL' &&
+       (needs.review.outputs.sanctuary_only == 'true' ||
+        fromJson(needs.gate.outputs.fix_attempts) >= fromJson(inputs.fix_attempt_limit)))
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            core.warning("fixerを起動せず人間に回します(聖域への指摘、または修正試行が上限に到達)");
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ["needs-human"],
+            });

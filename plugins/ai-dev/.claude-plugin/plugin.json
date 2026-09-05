@@ -1,0 +1,10 @@
+{
+  "$schema": "https://anthropic.com/claude-code/plugin.schema.json",
+  "name": "ai-dev",
+  "version": "0.1.0",
+  "description": "AI主導開発の土台。reviewer→fixerの自動レビューループと、AIを止める仕組み(聖域ガード)をセットで提供する",
+  "author": {
+    "name": "kosei-k"
+  },
+  "homepage": "https://github.com/kosei-k/ai-dev-template"
+}
