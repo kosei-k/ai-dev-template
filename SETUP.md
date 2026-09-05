@@ -130,12 +130,25 @@ depends = ["lint", "test", "docs-lint"]
 `reviewer` は自分の感覚で品質を判断せず、これらを読む。
 `docs/` にある雛形をコピーして、プロジェクトに合わせて書き換える。
 
-| ファイル | 中身 |
-|---|---|
-| `.claude/04_quality/01_review_checklist.md` | 項目IDを振ったレビュー観点。**機械検査済みの項目には印を付ける**（CIが見るものをAIに指摘させない） |
-| `.claude/04_quality/02_severity.md` | Critical / Major / Minor の定義と**このプロジェクトでの具体例** |
-| `.claude/00_project/03_plan_template.md` | 計画テンプレート。`plan-reviewer` が抜けを検出する基準になる |
-| `.claude/05_acceptance/01_scope.md` | 受け入れケース台帳（使う場合） |
+| コピー元 | コピー先 | 中身 |
+|---|---|---|
+| `docs/04_quality/01_review_checklist.md` | `.claude/04_quality/01_review_checklist.md` | 項目IDを振ったレビュー観点。**機械検査済みの項目には印を付ける**（CIが見るものをAIに指摘させない） |
+| `docs/04_quality/02_severity.md` | `.claude/04_quality/02_severity.md` | Critical / Major / Minor の定義と**このプロジェクトでの具体例** |
+| `docs/00_project/02_development_process.md` | `.claude/00_project/02_development_process.md` | Issue→Plan PR→実装PR の流れとトリガー表 |
+| `docs/00_project/03_plan_template.md` | `.claude/00_project/03_plan_template.md` | 計画テンプレート。`plan-reviewer` が抜けを検出する基準になる |
+| `docs/05_acceptance/00_policy.md` | `.claude/05_acceptance/00_policy.md` | 受け入れケースのID体系と、台帳への追加タイミング |
+
+まとめて取得する場合:
+
+```bash
+mkdir -p .claude/{00_project,04_quality,05_acceptance,06_adr,07_plans}
+git clone --depth 1 https://github.com/kosei-k/ai-dev-template /tmp/ai-dev-template
+cp -r /tmp/ai-dev-template/docs/00_project/*   .claude/00_project/
+cp -r /tmp/ai-dev-template/docs/04_quality/*   .claude/04_quality/
+cp -r /tmp/ai-dev-template/docs/05_acceptance/* .claude/05_acceptance/
+```
+
+**コピーしたら「これは雛形です」の行を消し、自分のプロジェクトの内容に書き換えること。**
 
 ## 7. 動作確認
 
