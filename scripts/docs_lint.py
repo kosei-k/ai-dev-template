@@ -83,10 +83,17 @@ def check_acceptance(base: Path, cfg: dict) -> list[str]:
     tests_dir = base / tests_rel
     if not ledger.exists():
         return [f"受け入れケース台帳 {ledger_rel} が無い"]
-    if not tests_dir.exists():
-        return [f"テストディレクトリ {tests_rel} が無い"]
 
     ledger_ids = _extract_ids(ledger.read_text(encoding="utf-8"))
+
+    if not tests_dir.exists():
+        # 立ち上げ直後は実装もテストも無い。台帳が空ならこの検査は対象外。
+        # 台帳にIDがあるのにテストが無いのは、対応が取れていない状態なので落とす。
+        if not ledger_ids:
+            return []
+        return [
+            f"台帳に {len(ledger_ids)}件のIDがあるが、テストディレクトリ {tests_rel} が無い"
+        ]
     patterns = acceptance.get("test_globs", ["*.py"])
     test_ids: set[str] = set()
     for pattern in patterns:
