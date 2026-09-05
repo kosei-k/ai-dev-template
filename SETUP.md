@@ -61,6 +61,13 @@ concurrency:
   cancel-in-progress: true
 jobs:
   ai-review:
+    # 呼び出し側で権限を明示する。**これが無いと起動に失敗する**
+    # （reusable workflow は呼び出し側の権限を超える権限を要求できないため）
+    permissions:
+      contents: write        # fixer が [ai-fix] コミットを push する
+      pull-requests: write   # レビュー結果をPRにコメントする
+      issues: write          # needs-human ラベルを付ける
+      id-token: write
     uses: kosei-k/ai-dev-template/.github/workflows/ai-review.yml@main
     with:
       check_command: mise run check
@@ -81,11 +88,21 @@ on:
     types: [opened, synchronize, reopened]
 jobs:
   guard:
+    permissions:
+      contents: read
+      issues: write          # ESCALATE時に needs-human ラベルを付ける
+      pull-requests: write
     uses: kosei-k/ai-dev-template/.github/workflows/guard.yml@main
     with:
       tests_glob: 'tests/*.py'
       impl_glob: 'src/*.py'
 ```
+
+> **重要**: 呼び出し側の `permissions:` は省略できない。省略するとリポジトリ既定
+> （多くの場合 read のみ）が適用され、**呼び出される側が要求する write 権限を
+> 満たせずワークフローが起動失敗する**（`startup_failure`）。
+> 単独のワークフローなら `permissions:` で昇格できるが、reusable workflow は
+> **呼び出し側の権限を上限とする**ため、呼び出し側で明示する必要がある。
 
 `.github/workflows/docs-lint.yml`（受け入れケース台帳を使う場合）:
 

@@ -18,6 +18,11 @@ name: Guard (reusable)
 #       types: [opened, synchronize, reopened]
 #   jobs:
 #     guard:
+#       # 呼び出し側での permissions 宣言は必須。無いと startup_failure になる
+#       permissions:
+#         contents: read
+#         issues: write
+#         pull-requests: write
 #       uses: kosei-k/ai-dev-template/.github/workflows/guard.yml@main
 #       with:
 #         tests_glob: 'tests/*.py'

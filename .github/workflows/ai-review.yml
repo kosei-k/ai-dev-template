@@ -20,6 +20,12 @@ name: AI Review (reusable)
 #     cancel-in-progress: true
 #   jobs:
 #     ai-review:
+#       # 呼び出し側での permissions 宣言は必須。無いと startup_failure になる
+#       permissions:
+#         contents: write
+#         pull-requests: write
+#         issues: write
+#         id-token: write
 #       uses: kosei-k/ai-dev-template/.github/workflows/ai-review.yml@main
 #       with:
 #         check_command: mise run check
