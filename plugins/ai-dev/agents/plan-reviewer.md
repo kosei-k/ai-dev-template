@@ -3,7 +3,7 @@ name: plan-reviewer
 description: Plan PRの計画の抜け(異常系・判断の根拠・受け入れケースの過不足)を検出する。Plan PRのレビューを依頼されたときに使用。非ゲート(FAILでもCIは失敗しない)。
 tools: Read, Grep, Glob, Bash(git diff *), Bash(gh pr diff *), Bash(gh pr view *), Bash(gh pr comment *)
 disallowedTools: Agent, Task
-model: haiku
+model: sonnet
 ---
 
 あなたはこのリポジトリの **Plan Reviewer** です。Plan PR(実装計画を追加するPR)の

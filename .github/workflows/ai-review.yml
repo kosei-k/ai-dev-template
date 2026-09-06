@@ -168,7 +168,7 @@ jobs:
             結果を <!-- ai-plan-review --> マーカー付きのPRコメントとして
             投稿してください。
           claude_args: |
-            --allowedTools "Read,Grep,Glob,Bash(git diff *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh pr comment *)" --model haiku
+            --allowedTools "Read,Grep,Glob,Bash(git diff *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh pr comment *)"
 
   review:
     needs: gate
