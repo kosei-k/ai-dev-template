@@ -11,9 +11,13 @@
 |---|---|---|---|
 | 1 | **Claude Code の GitHub App** | https://github.com/apps/claude から**対象リポジトリに**インストール | `Claude Code is not installed on this repository` で失敗 |
 | 2 | **`CLAUDE_CODE_OAUTH_TOKEN`** | リポジトリの Settings → Secrets and variables → Actions | 認証エラー |
-| 3 | **呼び出し側の `permissions` 宣言** | 各ワークフローファイル（手順3を参照） | `startup_failure`。ジョブが起動すらしない |
+| 3 | **呼び出し側の `permissions` 宣言** | 各ワークフローファイル（手順4を参照） | `startup_failure`。ジョブが起動すらしない |
 
 1と2は別物である。**1はリポジトリへのアクセス許可、2は認証情報**で、両方要る。
+
+これとは別に、`.claude/settings.json`（手順3）が無いと**CIは動くがローカルが不便になる**。
+プラグインは `permissions` を配布できないため、`git status` のような読み取り専用の
+コマンドまで毎回確認を求められる。
 
 ## 1. プラグインを入れる
 
@@ -52,7 +56,27 @@ curl -o .claude/project.toml \
 「設定し忘れてガードが空振りしているのに気づかない」ことを防ぐための仕様。
 聖域が無いプロジェクトなら、`[[sanctuary.rule]]` ごと書かなければよい。
 
-## 3. ワークフローを3ファイル置く
+## 3. ローカルの実行権限を書く
+
+**プラグインは `permissions` を配布できない。** Claude Codeのプラグインが配れるのは
+agents・commands・hooksの3種だけで、`git commit` や `mise run` を確認なしで実行して
+よいかという判断は配布できない（プロジェクトごと・開発者ごとに違って当然のため）。
+**書かないと、`git status` のような読み取り専用コマンドまで毎回確認を求められる。**
+
+`settings.json.example` を `.claude/settings.json` としてコピーし、スタックに合わせる。
+
+```bash
+curl -o .claude/settings.json \
+  https://raw.githubusercontent.com/kosei-k/ai-dev-template/main/settings.json.example
+```
+
+- `mise run *` / `uv run *` の行は例。npm/pnpm/make 等ならそのコマンドに差し替える
+- **`hooks` は書かない。** プラグインが `PreToolUse`/`PostToolUse` を自動登録するため、
+  ここに書くと重複登録になる
+- `ask` の `git push *` と `deny` の `git push origin main` は、mainへの直接pushを
+  防ぐための組。緩めるなら理由を残す
+
+## 4. ワークフローを3ファイル置く
 
 いずれも中身は数行で、ロジックはテンプレート側にある。
 
@@ -121,7 +145,7 @@ jobs:
     uses: kosei-k/ai-dev-template/.github/workflows/docs-lint.yml@main
 ```
 
-## 4. ローカルでも同じ検査を走らせる
+## 5. ローカルでも同じ検査を走らせる
 
 CIとローカルで違うコマンドを叩くと、AIが「どちらで確かめるか」で間違える。
 タスクランナーに1本だけ入口を作り、そこから呼ぶ。
@@ -138,7 +162,7 @@ depends = ["lint", "test", "docs-lint"]
 ネットワークに依存させたくない場合は、`scripts/docs_lint.py` をvendorしてもよい
 （その場合はテンプレート側の更新が自動では届かなくなる）。
 
-## 5. `CLAUDE.md` を書く
+## 6. `CLAUDE.md` を書く
 
 **ここだけは毎回ゼロから書く。** プロジェクトの正典であり、流用するものではない。
 
@@ -149,7 +173,7 @@ depends = ["lint", "test", "docs-lint"]
 - **AIを止める境界** — 何をAIに変更させないか、なぜか
 - 落とし穴（実際に踏んだもの）
 
-## 6. 判断基準のドキュメントを置く
+## 7. 判断基準のドキュメントを置く
 
 `reviewer` は自分の感覚で品質を判断せず、これらを読む。
 `docs/` にある雛形をコピーして、プロジェクトに合わせて書き換える。
@@ -174,7 +198,7 @@ cp -r /tmp/ai-dev-template/docs/05_acceptance/* .claude/05_acceptance/
 
 **コピーしたら「これは雛形です」の行を消し、自分のプロジェクトの内容に書き換えること。**
 
-## 7. 動作確認
+## 8. 動作確認
 
 **わざと欠陥を含むPRを1本作って、止まることを確認する。** 止める仕組みが動くことを
 確認しないまま自動修正ループを本番のPRに向けるのは危険。
@@ -189,7 +213,8 @@ cp -r /tmp/ai-dev-template/docs/05_acceptance/* .claude/05_acceptance/
 ```
 your-repo/
   .claude/
-    project.toml              ← 固有設定（唯一の必須ファイル）
+    project.toml              ← 固有設定（AIレビュー・聖域に必須）
+    settings.json             ← ローカルの実行権限（無いと毎回確認を求められる）
     04_quality/               ← 判断基準（reviewer が読む）
     05_acceptance/            ← 受け入れケース台帳（任意）
     00_project/               ← プロセス文書（任意）

@@ -1,0 +1,40 @@
+{
+  "_comment": "これは雛形です。.claude/settings.json としてコピーし、スタックに合わせて書き換えてください。hooksは書かない — ai-devプラグインが自動で登録するため、ここに書くと重複します。mise/uv の行は例です。npm/pnpm/make 等なら差し替えてください。",
+
+  "permissions": {
+    "allow": [
+      "Bash(mise run *)",
+      "Bash(mise install)",
+      "Bash(uv run *)",
+      "Bash(uv sync)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git checkout -b *)",
+      "Bash(git fetch *)",
+      "Bash(gh issue view *)",
+      "Bash(gh issue comment *)",
+      "Bash(gh pr view *)",
+      "Bash(gh pr diff *)",
+      "Bash(gh pr comment *)",
+      "Bash(gh pr create *)",
+      "Bash(gh run *)"
+    ],
+    "ask": [
+      "Bash(gh pr merge *)",
+      "Bash(git push *)",
+      "Bash(git reset *)",
+      "Bash(git rebase *)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(**/.env.*)",
+      "Read(./secrets/**)",
+      "Bash(git push origin main)",
+      "Bash(curl *)",
+      "Bash(wget *)"
+    ]
+  }
+}
