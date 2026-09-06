@@ -29,7 +29,6 @@ name: AI Review (reusable)
 #       uses: kosei-k/ai-dev-template/.github/workflows/ai-review.yml@main
 #       with:
 #         check_command: mise run check
-#         sanctuary_paths: 'config/config\.toml|src/rules\.py'
 #       secrets:
 #         claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -41,7 +40,10 @@ on:
         type: string
         default: 'mise run check'
       sanctuary_paths:
-        description: '聖域パスの正規表現(| 区切り)。ここへの指摘は fixer を起動せず人間に回す'
+        description: |
+          聖域パスの正規表現(| 区切り)。**通常は指定しない。**
+          未指定なら .claude/project.toml の [[sanctuary.rule]] から自動で組み立てる
+          (聖域の定義を二重管理しないため)。
         type: string
         default: ''
       fix_attempt_limit:
@@ -76,6 +78,7 @@ jobs:
       skip: ${{ steps.decide.outputs.skip }}
       is_plan: ${{ steps.decide.outputs.is_plan }}
       fix_attempts: ${{ steps.decide.outputs.fix_attempts }}
+      sanctuary_paths: ${{ steps.sanctuary.outputs.paths }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -107,6 +110,20 @@ jobs:
 
           FIX_ATTEMPTS="$(git log --format=%s origin/${{ github.base_ref }}..HEAD | grep -c '^\[ai-fix\]' || true)"
           echo "fix_attempts=$FIX_ATTEMPTS" >> "$GITHUB_OUTPUT"
+
+      - name: 聖域パスを .claude/project.toml から読む
+        id: sanctuary
+        # 聖域の定義を二重管理しない。project.toml が唯一の正で、
+        # ワークフロー側の sanctuary_paths 入力は後方互換のための上書き手段。
+        # 二重管理すると、聖域を変えるたびワークフローの変更が必要になり、
+        # claude-code-action が「ワークフロー変更PR」として実行を拒否してしまう。
+        run: |
+          PATHS='${{ inputs.sanctuary_paths }}'
+          if [[ -z "$PATHS" && -f .claude/project.toml ]]; then
+            PATHS="$(python3 -c 'import re,tomllib,pathlib; cfg=tomllib.loads(pathlib.Path(".claude/project.toml").read_text(encoding="utf-8")); print("|".join(re.escape(r["path"]) for r in cfg.get("sanctuary",{}).get("rule",[]) if r.get("path")))')"
+          fi
+          echo "paths=$PATHS" >> "$GITHUB_OUTPUT"
+          echo "聖域パス: ${PATHS:-(なし)}"
 
   plan-review:
     needs: gate
@@ -206,9 +223,9 @@ jobs:
           # ファイルパスだけを抜き出して判定する(本文中の言及・引用と、実際の修正対象を
           # 区別するため)。
           SANCTUARY=false
-          if [[ -n "${{ inputs.sanctuary_paths }}" ]]; then
+          if [[ -n "${{ needs.gate.outputs.sanctuary_paths }}" ]]; then
             TARGETS="$(echo "$COMMENT" | grep -oE '対象: `[^`]+`' | grep -oE '`[^`]+`' | tr -d '`')"
-            if echo "$TARGETS" | grep -qE "^(${{ inputs.sanctuary_paths }})(:|$)"; then
+            if echo "$TARGETS" | grep -qE "^(${{ needs.gate.outputs.sanctuary_paths }})(:|$)"; then
               SANCTUARY=true
             fi
           fi

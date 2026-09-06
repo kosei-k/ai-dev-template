@@ -78,13 +78,13 @@ jobs:
     uses: kosei-k/ai-dev-template/.github/workflows/ai-review.yml@main
     with:
       check_command: mise run check
-      sanctuary_paths: 'config/config\.toml|src/rules\.py'
     secrets:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 ```
 
-`sanctuary_paths` は `.claude/project.toml` の聖域と同じものを正規表現で書く
-（GitHub Actions からはTOMLを読めないため、ここだけ二重に書く必要がある）。
+**聖域はここに書かない。** `.claude/project.toml` の `[[sanctuary.rule]]` から
+自動で読み取る。二重管理すると、聖域を変えるたびにワークフローの変更が必要になり、
+`claude-code-action` が「ワークフロー変更PR」として実行を拒否してしまう。
 
 `.github/workflows/guard.yml`:
 
