@@ -33,6 +33,10 @@
       "Read(**/.env.*)",
       "Read(./secrets/**)",
       "Bash(git push origin main)",
+      "Bash(git push --force*)",
+      "Bash(git branch -D *)",
+      "Bash(git clean -f*)",
+      "Bash(rm -rf *)",
       "Bash(curl *)",
       "Bash(wget *)"
     ]
