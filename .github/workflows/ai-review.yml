@@ -159,8 +159,11 @@ jobs:
             実行してください。Agent/Taskツールでの委譲は絶対にしないでください
             (このセッションにはサブエージェントを呼び出す権限がありません。
             委譲すると何も実行されずに終了します)。
-            このPRの計画をレビューし、<!-- ai-plan-review --> マーカー付きの
-            PRコメントとして結果を投稿してください。
+            **このPRが追加・変更した計画書だけ**をレビューしてください。
+            `gh pr diff --name-only` で対象を確認し、差分に含まれない既存の
+            計画書を読んで指摘しないこと。
+            結果を <!-- ai-plan-review --> マーカー付きのPRコメントとして
+            投稿してください。
           claude_args: |
             --allowedTools "Read,Grep,Glob,Bash(git diff *),Bash(gh pr diff *),Bash(gh pr view *),Bash(gh pr comment *)" --model haiku
 
