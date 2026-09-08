@@ -148,7 +148,12 @@ jobs:
           ref: main
 
       - name: plan-reviewer(非ゲート)
-        uses: anthropics/claude-code-action@v1
+        # **バージョンを固定する。** 2026-09-08、v1 が指す v1.0.218 で
+        # 「Claude Code native binary not found at /home/runner/.local/bin/claude」
+        # (errorClass: executable_not_found) が発生し、レビューが起動しなくなった。
+        # インストール成功のログの直後に落ちるため、こちらの設定では回避できない。
+        # 上げるときは、実PRで1回通してから上げる
+        uses: anthropics/claude-code-action@v1.0.217
         with:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           # fixerのpush(github-actions[bot]名義)がこのワークフローを再トリガーするため許可する
@@ -196,7 +201,12 @@ jobs:
           ref: main
 
       - name: reviewer
-        uses: anthropics/claude-code-action@v1
+        # **バージョンを固定する。** 2026-09-08、v1 が指す v1.0.218 で
+        # 「Claude Code native binary not found at /home/runner/.local/bin/claude」
+        # (errorClass: executable_not_found) が発生し、レビューが起動しなくなった。
+        # インストール成功のログの直後に落ちるため、こちらの設定では回避できない。
+        # 上げるときは、実PRで1回通してから上げる
+        uses: anthropics/claude-code-action@v1.0.217
         with:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           allowed_bots: "github-actions[bot]"
@@ -275,7 +285,12 @@ jobs:
         uses: jdx/mise-action@v2
 
       - name: fixer
-        uses: anthropics/claude-code-action@v1
+        # **バージョンを固定する。** 2026-09-08、v1 が指す v1.0.218 で
+        # 「Claude Code native binary not found at /home/runner/.local/bin/claude」
+        # (errorClass: executable_not_found) が発生し、レビューが起動しなくなった。
+        # インストール成功のログの直後に落ちるため、こちらの設定では回避できない。
+        # 上げるときは、実PRで1回通してから上げる
+        uses: anthropics/claude-code-action@v1.0.217
         with:
           claude_code_oauth_token: ${{ secrets.claude_code_oauth_token }}
           allowed_bots: "github-actions[bot]"
